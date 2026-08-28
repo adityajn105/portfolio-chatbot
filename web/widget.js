@@ -17,9 +17,20 @@
 (function () {
   "use strict";
 
-  // capture our own <script> tag now (defer keeps execution order, so
-  // currentScript is valid during this synchronous run).
+  // Find our own <script> tag to read config from. document.currentScript is
+  // set for parser-inserted classic scripts, but is null for `defer`/`async`
+  // tags and for scripts injected dynamically (the demo page does this) — so
+  // fall back to locating the widget.js tag by its data-api attribute.
   var SELF = document.currentScript;
+  if (!SELF || !SELF.getAttribute("data-api")) {
+    var cands = document.querySelectorAll("script[data-api]");
+    for (var i = cands.length - 1; i >= 0; i--) {
+      if (/widget\.js(\?|#|$)/.test(cands[i].src)) { SELF = cands[i]; break; }
+    }
+    if ((!SELF || !SELF.getAttribute("data-api")) && cands.length) {
+      SELF = cands[cands.length - 1];   // last resort: the last data-api script
+    }
+  }
   var API = (SELF && SELF.getAttribute("data-api") || "").replace(/\/$/, "");
   var TITLE = (SELF && SELF.getAttribute("data-title")) || "Ask me anything";
   var ACCENT = (SELF && SELF.getAttribute("data-accent")) || "#f0b429";
