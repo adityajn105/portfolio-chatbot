@@ -14,7 +14,11 @@
  * subtle status while the agent works). All the reasoning/tool internals stay
  * hidden here — that's what the demo page is for.
  */
-(function () {
+// Defined as a named function and CALLED at the very bottom of this file — not
+// an IIFE — because the mount code below reads CSS/TEMPLATE, which are declared
+// with `var` further down. Running immediately here would see them as
+// `undefined` (var hoisting), so we invoke after they're assigned.
+function pcbWidget() {
   "use strict";
 
   // Find our own <script> tag to read config from. document.currentScript is
@@ -211,7 +215,7 @@
       })();
     }).catch(function (e) { cb.onError(e.message); });
   }
-})();
+}
 
 // ===========================================================================
 // markup + styles (kept as strings so the whole widget is one file)
@@ -361,3 +365,6 @@ var CSS = `
   .pcb-panel { width: calc(100vw - 24px); height: calc(100vh - 24px); }
 }
 `;
+
+// CSS + TEMPLATE are now assigned, so it's safe to mount.
+pcbWidget();
