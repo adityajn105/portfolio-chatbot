@@ -10,7 +10,7 @@
   "use strict";
 
   // ---- config: edit API_DEFAULT after deploy, or pass ?api=… for local dev --
-  var API_DEFAULT = "https://portfolio-chatbot.onrender.com";  // ← set to your Render URL
+  var API_DEFAULT = "https://portfolio-chatbot-biow.onrender.com";  // ← Render backend URL
   var params = new URLSearchParams(location.search);
   var API = (params.get("api") || API_DEFAULT).replace(/\/$/, "");
 

@@ -18,7 +18,7 @@ services:
       # contact form). Legacy email-in-URL form; swap for formspree.io/f/<id> if it
       # ever stops working.
       - key: FORMSPREE_ENDPOINT
-        value: https://formspree.io/adityajn105@gmail.com
+        sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
       # Embeddings backend. "gemini" = Gemini Embedding API (no local model, so it
