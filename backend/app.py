@@ -223,7 +223,13 @@ def _stream(question: str, history: list[Turn] | None = None):
                                    if s.action and s.action not in ("__final__",)})
                     yield _sse("final", answer=ev.data["answer"], tools_used=used)
         except Exception as exc:  # never leave the stream hanging on a failure
-            yield _sse("error", message=str(exc))
+            low = str(exc).lower()
+            if any(s in low for s in ("timed out", "timeout", "deadline")):
+                message = ("That took longer than I expected — the model was slow "
+                           "to respond just now. Please try asking again in a moment.")
+            else:
+                message = str(exc)
+            yield _sse("error", message=message)
     finally:
         STATE.lock.release()
 

@@ -469,12 +469,27 @@ class GeminiPolicy:
         self.fallback_model = os.environ.get(
             "GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
         self.active_model = self.model   # flips to fallback_model on quota errors
+        # Disable the model's internal "thinking" by default. The flash tiers
+        # reason with hidden thinking tokens that routinely push one call past
+        # the timeout on the long ReAct prompt — and we don't need them: the
+        # visible "Thought:" line IS the reasoning. budget 0 = off, -1 = dynamic,
+        # >0 = capped. Guarded so an SDK/model without the knob just runs without
+        # it; if a call is later rejected for it, __call__ drops it and retries.
+        self._thinking = None
+        try:
+            self._thinking = types.ThinkingConfig(
+                thinking_budget=int(os.environ.get("GEMINI_THINKING_BUDGET", "0")))
+        except Exception:
+            self._thinking = None
 
     def __call__(self, prompt: str) -> str:
-        cfg = self._types.GenerateContentConfig(
+        cfg_kwargs = dict(
             temperature=0.1,
             stop_sequences=["\nObservation:"],  # hand control back after the action
         )
+        if self._thinking is not None:
+            cfg_kwargs["thinking_config"] = self._thinking
+        cfg = self._types.GenerateContentConfig(**cfg_kwargs)
         last_exc = None
         for attempt in range(self.retries):
             try:
@@ -486,6 +501,13 @@ class GeminiPolicy:
                 # empty (e.g. MALFORMED_RESPONSE): retry, else let the loop fall back
             except Exception as exc:            # timeouts, transient 429/503, resets
                 last_exc = exc
+                # If the model rejects the thinking knob, drop it and retry the
+                # call without it rather than failing the whole turn.
+                if self._thinking is not None and "thinking" in str(exc).lower():
+                    self._thinking = None
+                    cfg = self._types.GenerateContentConfig(
+                        temperature=0.1, stop_sequences=["\nObservation:"])
+                    continue
                 if not _is_transient(exc):      # invalid model / auth: don't retry
                     raise
                 # Quota/resource-exhausted on the primary model → drop to the
