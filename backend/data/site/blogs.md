@@ -7,6 +7,50 @@ Writing
 
 # All posts
 
+### Building the Chatbot on This Site: from the series to a live assistant
+
+The capstone: a full, file-by-file walkthrough of the assistant on this site — crawler, from-scratch RAG, a ReAct agent, tools over MCP, SSE streaming, an embeddable Shadow-DOM widget, and the safety-and-cost work tutorials skip. Every step points at the real code on GitHub and the production tool you'd swap in. It's live — go talk to it.
+
+- LLM
+- RAG
+- Agents
+- Production
+
+Sep 3, 2026
+
+### Evaluating & Observing LLM Apps
+
+You can't improve what you can't measure. This post builds evaluation from scratch — a golden set, hit@k and MRR for retrieval, a groundedness check for answers — plus lightweight tracing to see where latency and cost go, then points at how the whole system ships. With interactive metric and trace playgrounds.
+
+- LLM
+- Evaluation
+- Observability
+- RAG
+
+Sep 2, 2026
+
+### Fine-Tuning & Serving LLMs: LoRA, quantization, and vLLM
+
+When prompting isn't enough, you fine-tune. This post builds LoRA's low-rank idea from scratch in NumPy, shows why it trains ~250x fewer parameters, explains quantization and why 4-bit lets big models fit on small GPUs, and covers serving with vLLM. With interactive calculators for rank and memory.
+
+- LLM
+- Fine-Tuning
+- LoRA
+- Quantization
+
+Sep 1, 2026
+
+### How AI Agents Actually Work: ReAct from scratch
+
+An 'agent' is a while-loop around an LLM plus a text protocol for calling tools. This post builds the ReAct pattern — Reason, Act, Observe — by hand with no framework, so you can see there's no magic, then shows what LangGraph and MCP add on top. With an interactive trace you can step through.
+
+- LLM
+- Agents
+- ReAct
+- Tools
+
+Aug 31, 2026
+
 ### How GPT Works — Part 5: From Base Model to ChatGPT
 
 The final step: how a raw next-token predictor becomes a helpful assistant. Part 5 covers pretraining, supervised fine-tuning, and RLHF, the difference between a base model and a chat model, plus the context window and KV-cache that govern inference.
@@ -15,6 +59,17 @@ The final step: how a raw next-token predictor becomes a helpful assistant. Part
 - Deep Learning
 - NLP
 - RLHF
+
+Aug 30, 2026
+
+### RAG from Scratch: teaching a model to look things up
+
+Retrieval-Augmented Generation, built by hand with no libraries. Chunk a corpus, turn text into vectors with TF-IDF, retrieve by cosine similarity, and answer grounded in what you found — then see exactly where a purely lexical approach breaks and why semantic embeddings fix it. With interactive playgrounds.
+
+- LLM
+- RAG
+- NLP
+- Retrieval
 
 Aug 30, 2026
 

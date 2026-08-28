@@ -19,6 +19,50 @@ Writing
 
 ## Blog
 
+### Building the Chatbot on This Site: from the series to a live assistant
+
+The capstone: a full, file-by-file walkthrough of the assistant on this site — crawler, from-scratch RAG, a ReAct agent, tools over MCP, SSE streaming, an embeddable Shadow-DOM widget, and the safety-and-cost work tutorials skip. Every step points at the real code on GitHub and the production tool you'd swap in. It's live — go talk to it.
+
+- LLM
+- RAG
+- Agents
+- Production
+
+Sep 3, 2026
+
+### Evaluating & Observing LLM Apps
+
+You can't improve what you can't measure. This post builds evaluation from scratch — a golden set, hit@k and MRR for retrieval, a groundedness check for answers — plus lightweight tracing to see where latency and cost go, then points at how the whole system ships. With interactive metric and trace playgrounds.
+
+- LLM
+- Evaluation
+- Observability
+- RAG
+
+Sep 2, 2026
+
+### Fine-Tuning & Serving LLMs: LoRA, quantization, and vLLM
+
+When prompting isn't enough, you fine-tune. This post builds LoRA's low-rank idea from scratch in NumPy, shows why it trains ~250x fewer parameters, explains quantization and why 4-bit lets big models fit on small GPUs, and covers serving with vLLM. With interactive calculators for rank and memory.
+
+- LLM
+- Fine-Tuning
+- LoRA
+- Quantization
+
+Sep 1, 2026
+
+### How AI Agents Actually Work: ReAct from scratch
+
+An 'agent' is a while-loop around an LLM plus a text protocol for calling tools. This post builds the ReAct pattern — Reason, Act, Observe — by hand with no framework, so you can see there's no magic, then shows what LangGraph and MCP add on top. With an interactive trace you can step through.
+
+- LLM
+- Agents
+- ReAct
+- Tools
+
+Aug 31, 2026
+
 ### How GPT Works — Part 5: From Base Model to ChatGPT
 
 The final step: how a raw next-token predictor becomes a helpful assistant. Part 5 covers pretraining, supervised fine-tuning, and RLHF, the difference between a base model and a chat model, plus the context window and KV-cache that govern inference.
@@ -29,49 +73,6 @@ The final step: how a raw next-token predictor becomes a helpful assistant. Part
 - RLHF
 
 Aug 30, 2026
-
-### How GPT Works — Part 4: Training & Generation
-
-How a transformer learns and how it writes. Part 4 covers next-token cross-entropy training with an interactive loss-descent demo, then decoding strategies — greedy, temperature, top-k, and top-p sampling — you can reshape live.
-
-- GPT
-- Deep Learning
-- NLP
-- Training
-
-Aug 29, 2026
-
-### How GPT Works — Part 3: The Transformer
-
-How the attention mechanism becomes a working language model. Part 3 covers subword tokenization with live Byte-Pair Encoding, the transformer block (residuals, LayerNorm, MLP), the causal mask that makes a GPT decoder-only, and the full pipeline from text to next-token probabilities.
-
-- GPT
-- Deep Learning
-- NLP
-- Transformers
-
-Aug 28, 2026
-
-### How GPT Works — Part 2: Attention
-
-From the seq2seq bottleneck to the mechanism that replaced recurrence entirely. Part 2 builds attention from the ground up — soft alignment, scaled dot-product self-attention with Q/K/V, multi-head attention, and why a transformer needs positional encoding.
-
-- GPT
-- Deep Learning
-- NLP
-- Attention
-
-Aug 27, 2026
-
-### How GPT Works — Part 1: The Foundations
-
-A visual, hands-on guide to how large language models work. Part 1 covers the only prerequisites you need — vectors, the dot product, matrix multiplication, and softmax — then the one idea the whole model is built on: next-token prediction.
-
-- GPT
-- Deep Learning
-- NLP
-
-Aug 26, 2026
 
 View all posts
 
