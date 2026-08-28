@@ -8,7 +8,7 @@ file is that, in ~70 lines — so it runs even on Python 3.9, while the *server*
 server never share a runtime; that decoupling is the whole point of a protocol.
 
     client = MCPStdioClient([PY312, "mcp_server/blog_server.py"])
-    print(client.call_tool("search_blog", {"query": "what is PPO?"}))
+    print(client.call_tool("search_site", {"query": "what is PPO?"}))
     client.close()
 
 Two clients, one contract. `MCPStdioClient` is the real thing: it talks to a
@@ -26,7 +26,7 @@ from typing import Any
 
 from agent import Tool
 from contact import send_contact_message
-from rag import search_blog_text
+from rag import search_site_text
 
 PROTOCOL_VERSION = "2025-06-18"
 
@@ -92,14 +92,14 @@ class MCPStdioClient:
 
 
 def make_mcp_search_tool(client: Any, k: int = 3) -> Tool:
-    """Expose an MCP `search_blog` tool as a local agent Tool. The agent can't
-    tell the difference — it emits `Action: search_blog` as always; the call goes
+    """Expose an MCP `search_site` tool as a local agent Tool. The agent can't
+    tell the difference — it emits `Action: search_site` as always; the call goes
     out through MCP (a subprocess for MCPStdioClient, an in-memory handler for
     InProcessMCPClient)."""
     def _run(query: str) -> str:
-        return client.call_tool("search_blog", {"query": query, "k": k})
+        return client.call_tool("search_site", {"query": query, "k": k})
     return Tool(
-        name="search_blog",
+        name="search_site",
         description="Search Aditya's website — blog posts, projects, about/contact "
                     "— for a topic (via an MCP server). Input: a short query. Returns "
                     "relevant passages with scores; if weak, rephrase and search again.",
@@ -108,7 +108,7 @@ def make_mcp_search_tool(client: Any, k: int = 3) -> Tool:
 
 
 # --- the contact / send_message tool ---------------------------------------
-# Unlike search_blog (one string in), send_message needs an email + a message.
+# Unlike search_site (one string in), send_message needs an email + a message.
 # The ReAct protocol only gives a tool a single string, so the agent passes a
 # small JSON object as its Action Input; we parse it here (leniently) into the
 # three fields the capability expects.
@@ -181,11 +181,11 @@ class _InProcessServer:
                              "serverInfo": {"name": "blog-search-inproc", "version": "0.1"}})
         if method == "tools/call":
             params = req.get("params", {})
-            if params.get("name") != "search_blog":
+            if params.get("name") != "search_site":
                 return {"jsonrpc": "2.0", "id": rid,
                         "error": {"code": -32601, "message": f"unknown tool {params.get('name')}"}}
             args = params.get("arguments", {})
-            text = search_blog_text(self._rag, args.get("query", ""),
+            text = search_site_text(self._rag, args.get("query", ""),
                                     k=args.get("k", 3), min_score=args.get("min_score", 0.25))
             return _ok(rid, {"content": [{"type": "text", "text": text}]})
         return _ok(rid, {})

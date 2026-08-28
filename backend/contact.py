@@ -1,7 +1,7 @@
 """The `send_message` capability — forward a visitor's message to the site owner
 by email, via the portfolio's existing **Formspree** endpoint.
 
-Kept in its own stdlib-only module (like `rag.search_blog_text` for search) so
+Kept in its own stdlib-only module (like `rag.search_site_text` for search) so
 both transports return byte-identical results: the real FastMCP contact server
 (mcp_server/contact_server.py) and the in-process contact client
 (mcp_client.InProcessContactMCPClient) import this one function. No third-party

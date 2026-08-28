@@ -3,7 +3,7 @@
 The second MCP server in this project (the first is blog_server.py). It runs as
 its OWN process and exposes a single tool, `send_message`, that forwards a
 visitor's message to Aditya by email via his portfolio's Formspree endpoint.
-The agent connects over stdio and calls it exactly like `search_blog` — same
+The agent connects over stdio and calls it exactly like `search_site` — same
 protocol, different capability. No index, no model: this server is tiny.
 
 The actual send lives in contact.send_contact_message (stdlib only), shared with

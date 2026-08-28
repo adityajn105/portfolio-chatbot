@@ -531,7 +531,7 @@ class ExtractiveGenerator:
 
 
 # ---------------------------------------------------------------------------
-# The `search_blog` tool's text output, defined once here so the MCP server
+# The `search_site` tool's text output, defined once here so the MCP server
 # (mcp_server/blog_server.py) and the in-process MCP client (src/mcp.py) return
 # byte-identical passages — the transport differs, the capability doesn't.
 # ---------------------------------------------------------------------------
@@ -546,8 +546,8 @@ def _snippet(text: str, limit: int = 320) -> str:
     return text[:limit].rsplit(" ", 1)[0] + "…"
 
 
-def search_blog_text(rag: "RAG", query: str, k: int = 3, min_score: float = 0.25) -> str:
-    """Retrieve and format passages for the `search_blog` tool."""
+def search_site_text(rag: "RAG", query: str, k: int = 3, min_score: float = 0.25) -> str:
+    """Retrieve and format passages for the `search_site` tool."""
     hits = rag.query(query, k=k)
     if not hits:
         return "No results found. Try a different query."

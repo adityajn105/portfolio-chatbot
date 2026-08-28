@@ -6,11 +6,11 @@ result back as an *observation*, and let it think again. Reason → Act → Obse
 in a loop, until it declares a Final Answer. An "agent" is a `while` loop around
 an LLM plus a text protocol for calling tools — this file is that loop.
 
-    Question → Thought → (Action: search_blog) → Observation → Final Answer
+    Question → Thought → (Action: search_site) → Observation → Final Answer
                       └── or, if it already knows ──→ Final Answer
 
 Sections:
-  1. Tools          — the things an agent can *do* (search_blog, calculator)
+  1. Tools          — the things an agent can *do* (search_site, calculator)
   2. ReAct loop     — parse, dispatch, observe; streamed as Events
   3. Policies       — the pluggable "brain" (scripted / OpenAI / local SLM)
   4. Agentic RAG    — assemble an agent that decides whether to even retrieve
@@ -34,7 +34,7 @@ from rag import RAG  # noqa: E402
 # ---------------------------------------------------------------------------
 # A tool is just a name, a description (the agent reads this to decide when to
 # use it), and a function from a string input to a string observation. The
-# agent never calls Python directly; it emits `Action: search_blog / Action
+# agent never calls Python directly; it emits `Action: search_site / Action
 # Input: what is PPO?` and we dispatch to the matching tool. Keeping tools this
 # dumb is what makes the agent loop simple.
 # ===========================================================================
@@ -75,7 +75,7 @@ def make_search_tool(rag: Any, k: int = 3, min_score: float = 0.25) -> Tool:
                      "and searching again.]")
         return body
     return Tool(
-        name="search_blog",
+        name="search_site",
         description="Search Aditya's website (blog posts, projects, about/contact) "
                     "for a topic. Input: a short search query. Returns the most "
                     "relevant passages, each with a relevance score. If results are "
@@ -166,9 +166,9 @@ Final Answer: the answer (cite sources in [brackets] when you used the tool)
 Rules:
 - ANY question about Aditya himself — his email, contact info, background,
   education, location, job/employer, experience, dates, projects, or the
-  content/wording/opinions in his writing — MUST be answered from search_blog.
+  content/wording/opinions in his writing — MUST be answered from search_site.
   You do NOT know these facts on your own; you have NO reliable prior knowledge
-  about this specific person. Always call search_blog first for these, then
+  about this specific person. Always call search_site first for these, then
   answer only from the results and cite sources. Never answer a question about
   Aditya directly from memory, even if you feel confident — your guess will be
   about the wrong person.
@@ -178,7 +178,7 @@ Rules:
   it is NOT general knowledge — search first.
 - Each search result has a relevance score. If the results are weak (low score
   or they don't actually address the question), DON'T answer from them — instead
-  rephrase your query with different keywords and call search_blog again. Use at
+  rephrase your query with different keywords and call search_site again. Use at
   most 2 searches. If after searching you still can't find the specific detail,
   say you couldn't find it — do NOT fall back to a guess from memory.
 - Quote specific details (emails, names, dates, numbers) EXACTLY as they appear
@@ -292,11 +292,26 @@ class ReActAgent:
                 yield Event("final", {"answer": result.answer, "result": result})
                 return
 
-            # no clean action and no final answer → fall back to the safety-net
-            # tool (searching for the question) rather than spinning.
-            if step.action not in self.tools and self.fallback_tool in self.tools:
-                step.action = self.fallback_tool
-                step.action_input = step.action_input or question
+            # No valid Action line was parsed. Two very different cases:
+            #   (a) the model just TALKED — a clarifying question ("what's your
+            #       email and message?") or a direct conversational reply that
+            #       needs no tool. That prose IS the answer; returning it (rather
+            #       than searching for it) is what the user expects. This is the
+            #       common Gemini path and must NOT trigger a search.
+            #   (b) the model tried to act but mangled the format (flaky small
+            #       models emit a bogus/empty Action). ONLY then fall back to the
+            #       safety-net search tool instead of spinning.
+            if step.action not in self.tools:
+                prose = re.sub(r"^\s*Thought:\s*", "", raw.strip(), flags=re.I).strip()
+                tried_to_act = re.search(r"\bAction\s*:", raw, re.IGNORECASE) is not None
+                if prose and not tried_to_act:
+                    steps.append(Step(thought=step.thought, observation=prose))
+                    result = Result(answer=prose, steps=steps)
+                    yield Event("final", {"answer": prose, "result": result})
+                    return
+                if self.fallback_tool in self.tools:
+                    step.action = self.fallback_tool
+                    step.action_input = step.action_input or question
 
             # dispatch the tool
             tool = self.tools.get(step.action or "")
@@ -314,9 +329,34 @@ class ReActAgent:
                 f"Observation: {step.observation}\n"
             )
 
-        result = Result(answer="(stopped: reached step limit without an answer)",
-                        steps=steps, stopped="max_steps")
-        yield Event("final", {"answer": result.answer, "result": result})
+        # Step budget exhausted (the model kept acting and never wrote a Final
+        # Answer). Don't dead-end with a placeholder — force ONE answer from what
+        # we already gathered: forbid further searching and prime "Final Answer:"
+        # so the model completes it from the observations in the scratchpad.
+        forced = self.prompt_template.format(
+            tool_names=", ".join(self.tools),
+            tools=render_tools(list(self.tools.values())),
+            question=question,
+            scratchpad=scratchpad
+            + "Thought: I have gathered enough information and will not search "
+              "again; I'll answer from the observations above.\nFinal Answer:",
+        )
+        yield Event("thinking", {"prompt": forced, "brain": self.brain_name})
+        try:
+            raw = self.policy(forced)
+        except Exception:
+            raw = ""
+        yield Event("model", {"text": raw})
+        # the prompt ends at "Final Answer:", so the model's output IS the answer;
+        # still parse defensively in case it re-emits the label or extra sections.
+        answer = _grab("Final Answer: " + raw, r"Final Answer:\s*(.*)") or raw.strip()
+        # trim anything after a stray new Thought/Action the model may append
+        answer = re.split(r"\n(?:Thought|Action|Observation)\s*:", answer)[0].strip()
+        if not answer:
+            answer = ("I couldn't quite pull that together just now — please try "
+                      "rephrasing, or reach Aditya directly at the email on his site.")
+        result = Result(answer=answer, steps=steps, stopped="max_steps")
+        yield Event("final", {"answer": answer, "result": result})
 
     def run(self, question: str) -> Result:
         result = Result(answer="")
@@ -475,7 +515,7 @@ class SLMPolicy:
 # ---------------------------------------------------------------------------
 # Phase 1 always retrieved, then answered. That's wasteful for a question the
 # model already knows and can't cite for one it doesn't. Here we hand the model
-# a search_blog tool and the AGENTIC_RAG_PROMPT: answer directly if confident;
+# a search_site tool and the AGENTIC_RAG_PROMPT: answer directly if confident;
 # otherwise search first, then answer. The "brain" is auto-selected:
 #   * OPENAI_API_KEY set        → OpenAIPolicy (gpt-4o-mini), most reliable
 #   * else if transformers here → SLMPolicy (local Qwen2.5-1.5B), offline & free
@@ -486,7 +526,7 @@ class SLMPolicy:
 # still exercises the retrieve-then-answer path so the demo never dead-ends.
 _FALLBACK_TURNS = [
     "Thought: This asks about the blog's content, so I should search it.\n"
-    "Action: search_blog\n"
+    "Action: search_site\n"
     "Action Input: {q}",
     "Thought: The passages answer it.\n"
     "Final Answer: Based on the blog: {obs}",
@@ -539,12 +579,12 @@ def build_agent(rag: RAG, policy=None, max_steps: int = 5, use_mcp: bool = False
                 mcp_transport: str = "inprocess") -> ReActAgent:
     """Assemble the agentic-RAG agent. If policy is None, auto-select one.
 
-    Wires TWO tools: `search_blog` (retrieval) and `send_message` (contact the
+    Wires TWO tools: `search_site` (retrieval) and `send_message` (contact the
     owner by email). use_mcp=True routes both through MCP instead of calling the
     handlers directly. mcp_transport picks how:
       "inprocess" — in-memory MCP clients (no subprocess); deploys anywhere.
       "process"   — real FastMCP server subprocesses over stdio (one per server).
-    Either way the agent emits the same `Action: search_blog` / `send_message`."""
+    Either way the agent emits the same `Action: search_site` / `send_message`."""
     if use_mcp and mcp_transport == "process":
         from mcp_client import (MCPStdioClient, make_mcp_search_tool,
                                 make_mcp_contact_tool)
@@ -570,7 +610,7 @@ def build_agent(rag: RAG, policy=None, max_steps: int = 5, use_mcp: bool = False
     else:
         agent = ReActAgent(policy, tools, max_steps=max_steps,
                            prompt_template=AGENTIC_RAG_PROMPT,
-                           fallback_tool="search_blog")
+                           fallback_tool="search_site")
     if label:
         agent.brain_name = label
     return agent
@@ -584,7 +624,7 @@ class _ScriptedAgent(ReActAgent):
         self._rag = rag
         super().__init__(ScriptedPolicy([]), [tool], max_steps=3,
                          prompt_template=AGENTIC_RAG_PROMPT,
-                         fallback_tool="search_blog")
+                         fallback_tool="search_site")
         self.brain_name = "scripted fallback"
 
     def run_iter(self, question: str):

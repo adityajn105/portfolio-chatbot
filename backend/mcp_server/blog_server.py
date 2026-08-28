@@ -2,7 +2,7 @@
 
 This runs as its OWN process and exposes the from-scratch RAG retriever as an
 MCP tool. The agent — a separate process — connects over stdio and calls
-`search_blog` across the process boundary. The embedding model lives HERE and
+`search_site` across the process boundary. The embedding model lives HERE and
 nowhere else: this child owns retrieval, so the FastAPI parent stays light.
 
 It indexes CORPUS_DIR — the crawl snapshot the parent writes on boot (see
@@ -25,7 +25,7 @@ ROOT = os.path.dirname(HERE)          # the backend/ dir, where rag.py lives
 sys.path.append(ROOT)
 
 from fastmcp import FastMCP  # noqa: E402
-from rag import RAG, make_embedder, search_blog_text  # noqa: E402
+from rag import RAG, make_embedder, search_site_text  # noqa: E402
 
 mcp = FastMCP("blog-search")
 
@@ -39,14 +39,14 @@ print(f"[blog-server] indexed {_RAG.num_chunks} chunks from {CORPUS_DIR}",
 
 
 @mcp.tool
-def search_blog(query: str, k: int = 3, min_score: float = 0.25) -> str:
+def search_site(query: str, k: int = 3, min_score: float = 0.25) -> str:
     """Search Aditya's website and return the most relevant passages.
 
     Each result includes its source and a relevance score. If the best match is
     weak, the result says so — the agent uses that to rephrase and search again.
     """
-    # formatting lives in rag.search_blog_text so the in-process client matches
-    return search_blog_text(_RAG, query, k=k, min_score=min_score)
+    # formatting lives in rag.search_site_text so the in-process client matches
+    return search_site_text(_RAG, query, k=k, min_score=min_score)
 
 
 if __name__ == "__main__":
