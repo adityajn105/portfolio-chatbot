@@ -145,9 +145,11 @@ def _startup() -> None:
         os.environ["CORPUS_DIR"] = corpus
         STATE.agent = build_agent(rag=None, use_mcp=True, mcp_transport="process")
     else:
-        # offline/dev: build the index in-process (fastembed) and use in-memory MCP
-        from rag import FastEmbedEmbedder
-        rag = RAG(embedder=FastEmbedEmbedder()).build(corpus)
+        # single interpreter (fits 512 MB): build the index in-process and use the
+        # in-memory MCP clients. Embedder chosen by EMBEDDER env (default gemini —
+        # API embeddings, no local model, so no OOM). See rag.make_embedder.
+        from rag import make_embedder
+        rag = RAG(embedder=make_embedder()).build(corpus)
         STATE.agent = build_agent(rag=rag, use_mcp=True, mcp_transport="inprocess")
     STATE.brain = getattr(STATE.agent, "brain_name", "?")
     print(f"[boot] ready — {len(STATE.pages)} pages, {STATE.chunks} chunks, "

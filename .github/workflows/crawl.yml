@@ -1,22 +1,24 @@
-# Refreshes the committed crawl snapshot (backend/data/site) in CI, so the
-# Render service never has to crawl at boot -- it just loads this snapshot.
-# Runs on a schedule and on demand; commits only when the snapshot changed.
-# A commit here triggers Render's auto-redeploy, so prod picks up fresh content.
+# Refreshes the committed crawl snapshot (backend/data/site) AND its embedding
+# cache (backend/data/embcache) in CI, so the Render service never has to crawl
+# or embed at boot -- it just loads both. Runs on a schedule and on demand;
+# commits only when something changed. A commit here triggers Render's
+# auto-redeploy, so prod picks up fresh content on a fast (cache-hit) boot.
 name: Refresh crawl snapshot
 
 on:
   push:
     branches: [main]
-    # don't loop on our own snapshot commits (also: pushes made with the default
-    # GITHUB_TOKEN don't retrigger workflows, so this is belt-and-suspenders)
+    # don't loop on our own snapshot/cache commits (also: pushes made with the
+    # default GITHUB_TOKEN don't retrigger workflows, so this is belt-and-braces)
     paths-ignore:
       - "backend/data/site/**"
+      - "backend/data/embcache/**"
   schedule:
     - cron: "0 6 * * 1"     # weekly, Mondays 06:00 UTC
   workflow_dispatch: {}      # manual "Run workflow" button
 
 permissions:
-  contents: write            # needed to push the refreshed snapshot
+  contents: write            # needed to push the refreshed snapshot + cache
 
 concurrency:
   group: crawl-snapshot
@@ -34,14 +36,42 @@ jobs:
       # here (edit this line if they change) to keep untrusted input out of run.
       - name: Crawl site(s) into the snapshot
         run: python backend/crawl.py --out backend/data/site https://adityajain.me https://projects.adityajain.me
-      - name: Commit snapshot if it changed
+
+      # Precompute the document embeddings so Render boots on a cache hit. Only
+      # google-genai + numpy are needed (NOT fastembed/onnxruntime), so keep the
+      # install light. Skips cleanly if GEMINI_API_KEY isn't set yet -- the
+      # snapshot still commits; add the secret and re-run to populate the cache.
+      - name: Install embedding deps
+        run: pip install --quiet "google-genai>=0.3" "numpy>=1.24"
+      - name: Precompute embedding cache
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EMBEDDER: gemini
+          GEMINI_EMBED_MODEL: gemini-embedding-2
+          GEMINI_EMBED_DIM: "768"
+          # CI has no port timeout, so push closer to the 100/min cap to finish
+          # in ~3 min. Cache key doesn't depend on pacing, so Render's slower
+          # pace still hits this cache.
+          GEMINI_EMBED_PER_MIN: "90"
+          GEMINI_EMBED_COOLDOWN: "60"
+          CORPUS_DIR: backend/data/site
+          EMBED_CACHE_DIR: backend/data/embcache
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "GEMINI_API_KEY secret not set -- skipping embedding precompute."
+            echo "Add it in repo Settings > Secrets and re-run to populate the cache."
+            exit 0
+          fi
+          python backend/precompute_embeddings.py
+
+      - name: Commit snapshot + cache if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/data/site
+          git add backend/data/site backend/data/embcache
           if git diff --cached --quiet; then
-            echo "Snapshot unchanged -- nothing to commit."
+            echo "Snapshot + cache unchanged -- nothing to commit."
           else
-            git commit -m "chore: refresh crawl snapshot"
+            git commit -m "chore: refresh crawl snapshot + embedding cache"
             git push
           fi

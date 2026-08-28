@@ -233,6 +233,149 @@ class FastEmbedEmbedder:
         return vecs / norms
 
 
+class GeminiEmbedder:
+    """Semantic embeddings via the **Gemini Embedding API** (`gemini-embedding-001`).
+
+    Unlike FastEmbedEmbedder there is NO local model / onnxruntime in memory — the
+    vectors come from the API — so this fits tiny hosts (Render's 512 MB free tier,
+    where loading fastembed OOMs). It reuses the same GEMINI_API_KEY.
+
+    Retrieval quality: documents are embedded with task_type RETRIEVAL_DOCUMENT and
+    queries with RETRIEVAL_QUERY (via `encode_query`), which is what the model wants
+    for search. Vectors are truncated to `output_dimensionality` (MRL) then
+    re-normalized to unit length (truncated Gemini vectors aren't unit by default),
+    so VectorStore's dot-product == cosine still holds.
+
+    Rate-limit hygiene (see module notes): gemini-embedding-2 returns exactly one
+    embedding per request, so documents are embedded one text per call, pacing
+    `per_min` requests then cooling down to stay under the 100/min free-tier cap.
+    Results are cached to disk (keyed by content hash) so a given corpus is
+    embedded once — CI precomputes + commits that cache, so Render boots on a cache
+    hit and never embeds the whole site on a cold start. Transient errors (429,
+    5xx) are retried with exponential backoff. A user query is a single request."""
+
+    def __init__(self, model: str | None = None, dim: int | None = None,
+                 per_min: int | None = None) -> None:
+        import time as _time
+        from google import genai
+        from google.genai import types
+        self._time = _time
+        self._types = types
+        self.model = model or os.environ.get("GEMINI_EMBED_MODEL", "gemini-embedding-2")
+        self.dim = int(dim or os.environ.get("GEMINI_EMBED_DIM", "768"))
+        # Free tier = 100 embed requests/min and EACH TEXT counts as one request
+        # (a 100-item call consumes 100). So we send at most `per_min` texts per
+        # window, then cool down `cooldown`s. Default 50/min — half the limit, to
+        # stay safe alongside query-time embeds sharing the same key.
+        self.per_min = int(per_min or os.environ.get("GEMINI_EMBED_PER_MIN", "50"))
+        self.cooldown = float(os.environ.get("GEMINI_EMBED_COOLDOWN", "60"))
+        self.retries = int(os.environ.get("GEMINI_EMBED_RETRIES", "5"))
+        # Default to a committed cache next to this file (backend/data/embcache):
+        # CI (crawl.yml) precomputes + commits it, so Render finds a cache hit on
+        # boot and never embeds the whole corpus on a cold start. Override with
+        # EMBED_CACHE_DIR. Resolved from __file__ so cwd doesn't matter.
+        self.cache_dir = os.environ.get("EMBED_CACHE_DIR") or os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "data", "embcache")
+        self.client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
+    def fit(self, docs: list[str]) -> "GeminiEmbedder":
+        return self  # pretrained; nothing to fit
+
+    @staticmethod
+    def _retry_delay(exc: Exception) -> float:
+        """Honor the server's 'Please retry in Xs' hint from a 429 body."""
+        m = re.search(r"retry in ([0-9.]+)s", str(exc))
+        return float(m.group(1)) + 1.0 if m else 0.0
+
+    def _embed_one(self, text: str, task_type: str) -> list[float]:
+        """Embed a single text. gemini-embedding-2 returns exactly one embedding
+        per request (it ignores extra items in a multi-text call), so we always
+        send one text at a time and read embeddings[0]."""
+        cfg = self._types.EmbedContentConfig(
+            task_type=task_type, output_dimensionality=self.dim)
+        last_exc = None
+        for attempt in range(self.retries):
+            try:
+                resp = self.client.models.embed_content(
+                    model=self.model, contents=[text], config=cfg)
+                return list(resp.embeddings[0].values)
+            except Exception as exc:            # 429 / 5xx / transient
+                last_exc = exc
+                wait = self._retry_delay(exc) or min(2 ** attempt, 30)
+                self._time.sleep(wait)
+        raise last_exc
+
+    def _embed(self, texts: list[str], task_type: str) -> np.ndarray:
+        rows: list[list[float]] = []
+        n = len(texts)
+        for idx, text in enumerate(texts):
+            rows.append(self._embed_one(text, task_type))
+            done = idx + 1
+            # each request counts against the 100/min free-tier cap; after every
+            # `per_min` requests, cool down so we never approach it.
+            if done < n and done % self.per_min == 0:
+                print(f"[embed] {done}/{n} texts; cooling down {self.cooldown:.0f}s "
+                      f"(free tier {self.per_min}/min)", flush=True)
+                self._time.sleep(self.cooldown)
+        vecs = np.asarray(rows, dtype=np.float32)
+        if vecs.ndim == 1:
+            vecs = vecs.reshape(1, -1)
+        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        return vecs / norms                      # re-normalize truncated vectors
+
+    def _cache_path(self, texts: list[str]) -> str:
+        import hashlib
+        # key on model|dim|corpus text so a content change misses (re-embeds) and
+        # an identical corpus hits — regardless of which host built the cache.
+        h = hashlib.sha256(f"{self.model}|{self.dim}|{len(texts)}".encode())
+        for t in texts:
+            h.update(b"\x00")
+            h.update(t.encode("utf-8", "replace"))
+        return os.path.join(self.cache_dir, h.hexdigest() + ".npy")
+
+    def encode(self, texts: list[str]) -> np.ndarray:
+        """Embed DOCUMENTS (used at index time). Cached to disk by content hash so
+        the same corpus isn't re-embedded on every boot — the main rate-limit lever."""
+        texts = list(texts)
+        path = self._cache_path(texts)
+        try:
+            if os.path.exists(path):
+                vecs = np.load(path)
+                if vecs.shape[0] == len(texts):
+                    return vecs
+        except Exception:
+            pass                                 # corrupt/mismatched cache → re-embed
+        vecs = self._embed(texts, "RETRIEVAL_DOCUMENT")
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            np.save(path, vecs)
+        except Exception:
+            pass                                 # cache is best-effort
+        return vecs
+
+    def encode_query(self, texts: list[str]) -> np.ndarray:
+        """Embed QUERIES (used at search time) — RETRIEVAL_QUERY, no caching."""
+        return self._embed(list(texts), "RETRIEVAL_QUERY")
+
+
+def make_embedder(kind: str | None = None) -> Any:
+    """Pick the embedder by name (env EMBEDDER; default 'gemini' for the deploy).
+
+      gemini  → GeminiEmbedder          (API, no local model — fits 512 MB)
+      fastembed → FastEmbedEmbedder     (local ONNX — needs ~more RAM)
+      st      → SentenceTransformerEmbedder (needs torch)
+      tfidf   → TfidfEmbedder           (lexical, zero deps)"""
+    kind = (kind or os.environ.get("EMBEDDER", "gemini")).lower()
+    if kind in ("gemini", "gemini-embedding", "api"):
+        return GeminiEmbedder()
+    if kind in ("fastembed", "onnx"):
+        return FastEmbedEmbedder()
+    if kind in ("st", "sentence-transformer", "sentencetransformer"):
+        return SentenceTransformerEmbedder()
+    return TfidfEmbedder()
+
+
 # ===========================================================================
 # 3. Vector store — from scratch
 # ---------------------------------------------------------------------------
@@ -322,7 +465,10 @@ class RAG:
         return self
 
     def query(self, question: str, k: int = 4) -> list[Hit]:
-        qvec = self.embedder.encode([question])[0]
+        # some embedders (Gemini) want a distinct task_type for queries vs docs;
+        # use encode_query when available, else fall back to the shared encode.
+        encode_q = getattr(self.embedder, "encode_query", self.embedder.encode)
+        qvec = encode_q([question])[0]
         return self.store.search(qvec, k=k)
 
     @property

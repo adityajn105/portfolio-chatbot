@@ -21,6 +21,26 @@ services:
         value: https://formspree.io/adityajn105@gmail.com
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
+      # Embeddings backend. "gemini" = Gemini Embedding API (no local model, so it
+      # fits 512 MB where fastembed OOMs). Alternatives: fastembed | st | tfidf.
+      - key: EMBEDDER
+        value: gemini
+      # Gemini embedding knobs (used only when EMBEDDER=gemini):
+      #   dim 768 (MRL-truncated, re-normalized) keeps vectors small. gemini-
+      #   embedding-2 returns one vector per request, so docs are embedded one
+      #   text per call; free tier is 100 req/min, so we do 50 then wait 60s
+      #   (PER_MIN/COOLDOWN) to stay well under the cap. Docs are disk-cached
+      #   (backend/data/embcache, committed by crawl.yml) so this boots on a
+      #   cache hit -- only per-question query embeds hit the API at runtime.
+      - key: GEMINI_EMBED_MODEL
+        value: gemini-embedding-2
+      - key: GEMINI_EMBED_DIM
+        value: "768"
+      - key: GEMINI_EMBED_PER_MIN
+        value: "50"
+      - key: GEMINI_EMBED_COOLDOWN
+        value: "60"
+      # unused unless EMBEDDER=fastembed
       - key: FASTEMBED_MODEL
         value: BAAI/bge-small-en-v1.5
       # Empty => no boot crawl: load the snapshot in backend/data/site, which CI
@@ -32,8 +52,12 @@ services:
         value: ""
       - key: CORPUS_DIR
         value: /tmp/site
+      # inprocess = ONE interpreter (fits Render's 512 MB free tier). "process"
+      # spawns 3 interpreters (parent + blog + contact MCP children) and OOMs at
+      # 512 MB. inprocess keeps the same agent/tools + semantic search; the MCP
+      # clients just run in-process instead of as subprocesses.
       - key: MCP_TRANSPORT
-        value: process
+        value: inprocess
       # tighten to your Pages/portfolio origins in production, e.g.
       # https://jackgriffin105.github.io,https://adityajn105.github.io
       - key: ALLOWED_ORIGINS

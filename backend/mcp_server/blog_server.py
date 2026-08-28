@@ -6,8 +6,9 @@ MCP tool. The agent — a separate process — connects over stdio and calls
 nowhere else: this child owns retrieval, so the FastAPI parent stays light.
 
 It indexes CORPUS_DIR — the crawl snapshot the parent writes on boot (see
-app.py) — using FastEmbedEmbedder (local ONNX, no API/quota, no torch). Set
-CORPUS_DIR to point it at the snapshot; FASTEMBED_MODEL overrides the model.
+app.py) — using the embedder chosen by the EMBEDDER env (default: Gemini API
+embeddings, disk-cached so boot is a cache hit). Set CORPUS_DIR to point it at
+the snapshot; see rag.make_embedder for the embedder options.
 
 Run standalone (stdio):  python mcp_server/blog_server.py
 The agent normally launches this for you (see mcp_client.py / agent.build_agent).
@@ -24,14 +25,15 @@ ROOT = os.path.dirname(HERE)          # the backend/ dir, where rag.py lives
 sys.path.append(ROOT)
 
 from fastmcp import FastMCP  # noqa: E402
-from rag import RAG, FastEmbedEmbedder, search_blog_text  # noqa: E402
+from rag import RAG, make_embedder, search_blog_text  # noqa: E402
 
 mcp = FastMCP("blog-search")
 
-# Index the crawl snapshot the parent wrote on boot. Semantic embeddings via
-# fastembed (ONNX) so "email" finds the "get in touch" section — free, no key.
+# Index the crawl snapshot the parent wrote on boot. Embedder chosen by EMBEDDER
+# env (default gemini: API embeddings so "email" finds the "get in touch" section
+# with no local model). See rag.make_embedder for the options.
 CORPUS_DIR = os.environ.get("CORPUS_DIR", os.path.join(ROOT, "data", "site"))
-_RAG = RAG(embedder=FastEmbedEmbedder()).build(CORPUS_DIR)
+_RAG = RAG(embedder=make_embedder()).build(CORPUS_DIR)
 print(f"[blog-server] indexed {_RAG.num_chunks} chunks from {CORPUS_DIR}",
       file=sys.stderr, flush=True)
 
