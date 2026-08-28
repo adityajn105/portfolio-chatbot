@@ -1,0 +1,19 @@
+# Web layer
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.0
+
+# Pipeline (from-scratch RAG): NumPy only for the store/chunking
+numpy>=1.24
+
+# Embeddings — local ONNX, no torch (~300 MB, fits Render's 512 MB free tier)
+fastembed>=0.3
+
+# Generation — Gemini (generation only; embeddings never touch the key)
+google-genai>=0.3
+
+# MCP servers — the real FastMCP framework (retrieval + contact children)
+fastmcp>=2.0
+
+# NOTE: intentionally NO torch / sentence-transformers / transformers here —
+# they'd blow the memory budget. contact.py uses only the stdlib (urllib).

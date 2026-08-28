@@ -1,0 +1,47 @@
+# Refreshes the committed crawl snapshot (backend/data/site) in CI, so the
+# Render service never has to crawl at boot -- it just loads this snapshot.
+# Runs on a schedule and on demand; commits only when the snapshot changed.
+# A commit here triggers Render's auto-redeploy, so prod picks up fresh content.
+name: Refresh crawl snapshot
+
+on:
+  push:
+    branches: [main]
+    # don't loop on our own snapshot commits (also: pushes made with the default
+    # GITHUB_TOKEN don't retrigger workflows, so this is belt-and-suspenders)
+    paths-ignore:
+      - "backend/data/site/**"
+  schedule:
+    - cron: "0 6 * * 1"     # weekly, Mondays 06:00 UTC
+  workflow_dispatch: {}      # manual "Run workflow" button
+
+permissions:
+  contents: write            # needed to push the refreshed snapshot
+
+concurrency:
+  group: crawl-snapshot
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # crawl.py is stdlib-only -- no pip install needed. Sites are hard-coded
+      # here (edit this line if they change) to keep untrusted input out of run.
+      - name: Crawl site(s) into the snapshot
+        run: python backend/crawl.py --out backend/data/site https://adityajain.me https://projects.adityajain.me
+      - name: Commit snapshot if it changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/data/site
+          if git diff --cached --quiet; then
+            echo "Snapshot unchanged -- nothing to commit."
+          else
+            git commit -m "chore: refresh crawl snapshot"
+            git push
+          fi

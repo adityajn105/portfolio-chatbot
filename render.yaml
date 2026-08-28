@@ -1,0 +1,42 @@
+# Render Blueprint — one free web service running the backend.
+# Render auto-detects this file at the repo root; rootDir scopes it to backend/.
+# On first deploy set the two `sync: false` secrets in the dashboard.
+services:
+  - type: web
+    name: portfolio-chatbot
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # generation only — set this in the Render dashboard (never commit it)
+      - key: GEMINI_API_KEY
+        sync: false
+      # visitor "contact me" messages POST here (already public on the portfolio's
+      # contact form). Legacy email-in-URL form; swap for formspree.io/f/<id> if it
+      # ever stops working.
+      - key: FORMSPREE_ENDPOINT
+        value: https://formspree.io/adityajn105@gmail.com
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: FASTEMBED_MODEL
+        value: BAAI/bge-small-en-v1.5
+      # Empty => no boot crawl: load the snapshot in backend/data/site, which CI
+      # (.github/workflows/crawl.yml) crawls + commits on push and weekly. If no
+      # snapshot exists yet (first deploy), the app crawls live once so it still
+      # boots. Set this to "https://adityajain.me https://projects.adityajain.me"
+      # to force a live crawl on every boot.
+      - key: CRAWL_SITES
+        value: ""
+      - key: CORPUS_DIR
+        value: /tmp/site
+      - key: MCP_TRANSPORT
+        value: process
+      # tighten to your Pages/portfolio origins in production, e.g.
+      # https://jackgriffin105.github.io,https://adityajn105.github.io
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: PYTHON_VERSION
+        value: "3.12.6"

@@ -1,0 +1,37 @@
+# Publishes the static frontend in web/ to GitHub Pages.
+# One repo, two deploy targets: this handles the UI; render.yaml handles the API.
+# In the repo settings enable Pages -> Build and deployment -> Source: GitHub Actions.
+name: Deploy web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:      # allow manual re-deploys from the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# only one Pages deploy at a time; newer pushes supersede in-flight ones
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web          # the static site lives here (no build step needed)
+      - id: deployment
+        uses: actions/deploy-pages@v4
