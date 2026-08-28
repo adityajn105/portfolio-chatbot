@@ -14,13 +14,20 @@ services:
       # generation only — set this in the Render dashboard (never commit it)
       - key: GEMINI_API_KEY
         sync: false
-      # visitor "contact me" messages POST here (already public on the portfolio's
-      # contact form). Legacy email-in-URL form; swap for formspree.io/f/<id> if it
-      # ever stops working.
+      # Where visitor "contact me" messages POST. MUST be a real Formspree form
+      # endpoint (https://formspree.io/f/<form-id>) — the legacy email-in-URL
+      # form (formspree.io/<email>) is deprecated and returns 403. Form ids are
+      # public (they ship in the site's client HTML), so it's fine to commit.
+      # The form must be activated in Formspree (confirm the first submission's
+      # email) before sends succeed.
       - key: FORMSPREE_ENDPOINT
-        sync: false
+        value: https://formspree.io/f/myeygrly
+      # Generation model. The "-lite" tier is cheap but reasons poorly — it
+      # misread the experience list (reported an old role as "latest") and
+      # hallucinated personal facts. The full flash tier is far more reliable
+      # for grounded Q&A; drop back to a lite/older id only if you hit quota.
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash-lite
+        value: gemini-3.5-flash
       # Embeddings backend. "gemini" = Gemini Embedding API (no local model, so it
       # fits 512 MB where fastembed OOMs). Alternatives: fastembed | st | tfidf.
       - key: EMBEDDER

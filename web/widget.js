@@ -83,8 +83,7 @@ function pcbWidget() {
     if (open) {
       setTimeout(function () { input.focus(); }, 60);
       if (!log.dataset.greeted) {
-        addMsg("bot", "Hi! Ask me anything about Aditya — his work, projects, "
-          + "or how to get in touch.");
+        addMsg("bot", "Hi there! Ask me about my work, projects, or how to get in touch.");
         log.dataset.greeted = "1";
       }
     }
