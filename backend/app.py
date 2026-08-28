@@ -251,5 +251,8 @@ def health():
 @app.get("/pages")
 def pages():
     return {"sites": CRAWL_SITES, "total_chunks": STATE.chunks,
-            "pages": [{"title": p["title"], "url": p["url"], "chunks": p["chunks"]}
+            # `source` is the slug the model cites in-line (e.g. [home]); the
+            # widget uses it to hyperlink those citations to the real page URL.
+            "pages": [{"title": p["title"], "url": p["url"], "source": p["source"],
+                       "chunks": p["chunks"]}
                       for p in STATE.pages]}

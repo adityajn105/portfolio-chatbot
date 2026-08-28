@@ -423,6 +423,17 @@ def _is_transient(exc: Exception) -> bool:
     return any(t in msg for t in transient)
 
 
+def _is_quota(exc: Exception) -> bool:
+    """True specifically for quota / resource-exhausted errors (429) — as opposed
+    to a plain 503 overload. These are what warrant dropping to the lighter
+    fallback model: an exhausted daily quota won't clear on a short backoff, but
+    the lite tier has its own separate allowance."""
+    msg = str(exc).lower()
+    return any(s in msg for s in
+               ("429", "resource_exhausted", "resource exhausted", "quota",
+                "rate limit"))
+
+
 class GeminiPolicy:
     """The deploy brain: a Gemini model driving the ReAct loop. Same contract as
     OpenAIPolicy — it stops before writing its own Observation (via a
@@ -451,6 +462,13 @@ class GeminiPolicy:
             api_key=os.environ["GEMINI_API_KEY"],
             http_options=types.HttpOptions(timeout=self.timeout_ms))
         self.model = model or os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+        # Runtime auto-fallback: if the primary model hits a quota / resource-
+        # exhausted error mid-session, permanently drop to this lighter model for
+        # the rest of THIS process (its quota is separate). A fresh process — the
+        # next deploy or cold start — starts over on the primary model again.
+        self.fallback_model = os.environ.get(
+            "GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite")
+        self.active_model = self.model   # flips to fallback_model on quota errors
 
     def __call__(self, prompt: str) -> str:
         cfg = self._types.GenerateContentConfig(
@@ -461,7 +479,7 @@ class GeminiPolicy:
         for attempt in range(self.retries):
             try:
                 resp = self.client.models.generate_content(
-                    model=self.model, contents=prompt, config=cfg)
+                    model=self.active_model, contents=prompt, config=cfg)
                 text = resp.text or ""
                 if text.strip():
                     return text
@@ -470,6 +488,16 @@ class GeminiPolicy:
                 last_exc = exc
                 if not _is_transient(exc):      # invalid model / auth: don't retry
                     raise
+                # Quota/resource-exhausted on the primary model → drop to the
+                # lighter fallback for the rest of this process and retry on it
+                # right away (a different model, so no backoff needed). Sticky:
+                # once switched, every later call this session uses the fallback.
+                if _is_quota(exc) and self.active_model != self.fallback_model:
+                    print(f"[gemini] {self.active_model} hit quota/resource-exhausted"
+                          f" → switching to {self.fallback_model} for the rest of "
+                          f"this session", file=sys.stderr, flush=True)
+                    self.active_model = self.fallback_model
+                    continue
             if attempt < self.retries - 1:
                 # exponential backoff (~0.8, 1.6, 3.2s), capped, to outlast a spike
                 time.sleep(min(0.8 * (2 ** attempt), 8.0))

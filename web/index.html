@@ -20,6 +20,7 @@
       <div class="topbar-links">
         <a href="https://adityajain.me" target="_blank" rel="noopener">Portfolio&nbsp;↗</a>
         <a href="https://adityajain.me/blogs" target="_blank" rel="noopener">The blog behind this demo&nbsp;↗</a>
+        <a href="https://github.com/adityajn105/portfolio-chatbot" target="_blank" rel="noopener">Code&nbsp;↗</a>
       </div>
     </nav>
 
@@ -84,11 +85,13 @@
         <div class="panel-b">
           <div class="pages" id="pages"><span class="pages-empty">Loading…</span></div>
           <p class="mcp-note">
-            Two <b>MCP</b> servers back this agent, each its own process:
-            <b>blog</b> serves <code style="font-family:var(--mono)">search_blog</code>
-            (it owns the search index), and <b>contact</b> serves
+            Two <b>MCP</b> capabilities back this agent: a <b>search</b> server
+            exposes <code style="font-family:var(--mono)">search_site</code>
+            (it owns the index), and a <b>contact</b> server exposes
             <code style="font-family:var(--mono)">send_message</code>, which emails
-            Aditya via Formspree when a visitor wants to get in touch.
+            Aditya via Formspree when a visitor wants to get in touch. They speak
+            MCP over stdio as separate processes locally, and run in-process on
+            the free-tier host — the agent calls them the same either way.
           </p>
         </div>
       </aside>
@@ -138,7 +141,7 @@
         <li>
           <span class="n">5</span>
           <h3>Act via MCP tools</h3>
-          <p>Two <b>MCP</b> servers give it hands: <code>search_blog</code> to look
+          <p>Two <b>MCP</b> servers give it hands: <code>search_site</code> to look
             things up in the index, and <code>send_message</code> to email Aditya
             through Formspree when you want to get in touch.</p>
         </li>
@@ -157,7 +160,18 @@
       </p>
     </section>
 
-    <p class="foot" id="foot">— generation &amp; embeddings by Gemini · retrieval &amp; contact over MCP</p>
+    <footer class="site-foot">
+      <nav class="social" aria-label="Aditya on the web">
+        <a href="https://github.com/adityajn105" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://linkedin.com/in/adityajn105" target="_blank" rel="noopener">LinkedIn</a>
+        <a href="https://twitter.com/adityajn105" target="_blank" rel="noopener">Twitter</a>
+        <a href="https://hub.docker.com/u/adityajn105" target="_blank" rel="noopener">Docker&nbsp;Hub</a>
+        <a href="https://www.instagram.com/adityajn105/" target="_blank" rel="noopener">Instagram</a>
+        <a href="https://adityajain.me/files/Aditya_Jain_resume.pdf" target="_blank" rel="noopener">Résumé</a>
+      </nav>
+      <p class="foot" id="foot">— generation &amp; embeddings by Gemini · retrieval &amp; contact over MCP ·
+        <a href="https://github.com/adityajn105/portfolio-chatbot" target="_blank" rel="noopener">source code&nbsp;↗</a></p>
+    </footer>
   </main>
 
   <script src="demo.js"></script>
@@ -172,7 +186,7 @@
       s.defer = true;
       s.setAttribute("data-api", e.detail.api);
       s.setAttribute("data-title", "Chat with Aditya");
-      s.setAttribute("data-subtitle", "Grounded in the site — answers link to the source.");
+      s.setAttribute("data-subtitle", "First reply may take ~1 min — Aditya's assistant is waking up.");
       document.body.appendChild(s);
     });
   </script>

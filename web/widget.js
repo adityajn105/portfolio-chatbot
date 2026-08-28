@@ -39,12 +39,25 @@ function pcbWidget() {
   var TITLE = (SELF && SELF.getAttribute("data-title")) || "Ask me anything";
   var ACCENT = (SELF && SELF.getAttribute("data-accent")) || "#f0b429";
   var SUBTITLE = (SELF && SELF.getAttribute("data-subtitle")) ||
-    "Grounded in the site — answers link to the source.";
+    "First reply may take ~1 min — Aditya's assistant is waking up.";
 
   if (!API) {
     console.error("[portfolio-chatbot] missing data-api on the <script> tag");
     return;
   }
+
+  // Fetch the indexed pages once so we can hyperlink the [source] citations the
+  // bot writes (e.g. [home], [blogs-attention-model]) to their real page URLs.
+  // Best-effort: if it fails, citations simply stay as plain text.
+  var SOURCES = {};   // { slug: url }
+  fetch(API + "/pages")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      (d && d.pages || []).forEach(function (p) {
+        if (p.source && p.url) SOURCES[p.source] = p.url;
+      });
+    })
+    .catch(function () {});
 
   // ---- host + shadow root -------------------------------------------------
   var host = document.createElement("div");
@@ -83,7 +96,8 @@ function pcbWidget() {
     if (open) {
       setTimeout(function () { input.focus(); }, 60);
       if (!log.dataset.greeted) {
-        addMsg("bot", "Hi there! Ask me about my work, projects, or how to get in touch.");
+        addMsg("bot", "Hi! Ask me anything about Aditya — his work, projects, "
+          + "or how to get in touch.");
         log.dataset.greeted = "1";
       }
     }
@@ -174,6 +188,15 @@ function pcbWidget() {
     // [label](url)
     out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
       '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // [source] citations → link to the cited page. The bot cites the page slug
+    // (e.g. [home]); map it to a URL via SOURCES (from /pages). Unknown slugs are
+    // left untouched. Runs after the markdown-link pass so it only sees bare tags.
+    out = out.replace(/\[([a-z0-9][a-z0-9-]*)\]/g, function (m, slug) {
+      var url = SOURCES[slug];
+      return url
+        ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">[' + slug + ']</a>'
+        : m;
+    });
     // bare urls not already inside an anchor
     out = out.replace(/(^|[^"'>])(https?:\/\/[^\s<)]+)/g,
       '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
