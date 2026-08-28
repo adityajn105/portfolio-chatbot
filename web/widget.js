@@ -89,10 +89,39 @@ function pcbWidget() {
   var busy = false;
   var history = [];   // [{role,content}] prior turns, sent so follow-ups work
 
+  // --- mobile: keep the panel inside the *visual* viewport ------------------
+  // On phones the on-screen keyboard shrinks the visible area but NOT 100vh, so
+  // a bottom-anchored near-full-height panel spills off-screen and its header
+  // ends up above the top edge. window.visualViewport DOES track the keyboard,
+  // so when the panel is open on a small screen we pin it to that box; on
+  // desktop / when closed we clear the overrides and let the stylesheet rule.
+  var vv = window.visualViewport;
+  function fitPanel() {
+    var s = panel.style;
+    if (open && vv && window.matchMedia("(max-width: 480px)").matches) {
+      s.position = "fixed";
+      s.top = (vv.offsetTop + 8) + "px";
+      s.left = (vv.offsetLeft + 8) + "px";
+      s.right = "auto"; s.bottom = "auto";
+      s.width = (vv.width - 16) + "px";
+      s.height = (vv.height - 16) + "px";
+    } else {
+      s.position = s.top = s.left = s.right = s.bottom = s.width = s.height = "";
+    }
+  }
+  if (vv) {
+    vv.addEventListener("resize", fitPanel);
+    vv.addEventListener("scroll", fitPanel);
+  }
+  window.addEventListener("orientationchange", function () {
+    setTimeout(fitPanel, 250);
+  });
+
   function toggle(show) {
     open = show == null ? !open : show;
     wrap.classList.toggle("pcb-open", open);
     launcher.setAttribute("aria-expanded", String(open));
+    fitPanel();   // size to the viewport on open; clear overrides on close
     if (open) {
       setTimeout(function () { input.focus(); }, 60);
       if (!log.dataset.greeted) {
@@ -384,7 +413,14 @@ var CSS = `
 
 @media (max-width: 480px) {
   .pcb { right: 12px; bottom: 12px; }
-  .pcb-panel { width: calc(100vw - 24px); height: calc(100vh - 24px); }
+  /* JS pins the panel to visualViewport when open (keyboard-safe); these are the
+     pre-open / no-visualViewport fallbacks. dvh tracks browser chrome; the vh
+     line stays first so browsers without dvh support still get a height. */
+  .pcb-panel {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+    height: calc(100dvh - 24px);
+  }
 }
 `;
 
