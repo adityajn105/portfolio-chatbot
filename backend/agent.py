@@ -363,6 +363,21 @@ class OpenAIPolicy:
         return resp.choices[0].message.content or ""
 
 
+def _is_transient(exc: Exception) -> bool:
+    """True for errors worth retrying — overload/rate-limit/timeout/network — and
+    False for permanent ones (bad model id, auth) so we fail fast instead of
+    burning the whole backoff budget on a request that can never succeed."""
+    msg = str(exc).lower()
+    transient = ("503", "unavailable", "high demand", "overloaded", "429",
+                 "resource_exhausted", "rate limit", "timed out", "timeout",
+                 "deadline", "connection reset", "temporarily")
+    permanent = ("not found", "404", "invalid", "permission", "401", "403",
+                 "api key", "unauthorized")
+    if any(p in msg for p in permanent):
+        return False
+    return any(t in msg for t in transient)
+
+
 class GeminiPolicy:
     """The deploy brain: a Gemini model driving the ReAct loop. Same contract as
     OpenAIPolicy — it stops before writing its own Observation (via a
@@ -382,7 +397,11 @@ class GeminiPolicy:
         # cutting off a true hang; retry recovers a transient stall. (API minimum
         # deadline is 10s, so don't go below that.)
         self.timeout_ms = max(10, int(float(os.environ.get("GEMINI_TIMEOUT", "20")))) * 1000
-        self.retries = int(os.environ.get("GEMINI_RETRIES", "2"))
+        # The public Gemini API returns transient 503 UNAVAILABLE ("high demand")
+        # and 429s in bursts; a couple of sub-second retries isn't enough to ride
+        # one out, so retry more times with exponential backoff. Permanent errors
+        # (invalid model / auth) are detected and raised immediately (see below).
+        self.retries = int(os.environ.get("GEMINI_RETRIES", "4"))
         self.client = genai.Client(
             api_key=os.environ["GEMINI_API_KEY"],
             http_options=types.HttpOptions(timeout=self.timeout_ms))
@@ -404,8 +423,11 @@ class GeminiPolicy:
                 # empty (e.g. MALFORMED_RESPONSE): retry, else let the loop fall back
             except Exception as exc:            # timeouts, transient 429/503, resets
                 last_exc = exc
+                if not _is_transient(exc):      # invalid model / auth: don't retry
+                    raise
             if attempt < self.retries - 1:
-                time.sleep(0.4 * (attempt + 1))
+                # exponential backoff (~0.8, 1.6, 3.2s), capped, to outlast a spike
+                time.sleep(min(0.8 * (2 ** attempt), 8.0))
         if last_exc is not None:                # every attempt errored → surface it
             raise last_exc
         return ""                                # all empty → loop's search fallback
