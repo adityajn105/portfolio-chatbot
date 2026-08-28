@@ -25,11 +25,12 @@ import json
 import os
 import sys
 import threading
+import time
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
@@ -49,6 +50,85 @@ ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 MCP_TRANSPORT = os.environ.get("MCP_TRANSPORT", "process").lower()
 # where to fall back if a live crawl yields nothing (network down, sitemap gone)
 BUNDLED_SNAPSHOT = os.path.join(os.path.dirname(__file__), "data", "site")
+
+# --- abuse guards (all env-overridable) -------------------------------------
+# The endpoint is public and now backed by a *billed* Gemini key, so bound how
+# much any one visitor — and everyone combined — can spend, and how big a single
+# request can be. Everything here is in-memory (one Render instance; no Redis):
+# counters reset on restart/deploy, which is fine for a portfolio-scale bot.
+MAX_QUESTION_CHARS = int(os.environ.get("MAX_QUESTION_CHARS", "600"))  # per question
+MAX_TURN_CHARS = int(os.environ.get("MAX_TURN_CHARS", "600"))         # per history turn
+RATE_PER_MIN = int(os.environ.get("RATE_PER_MIN", "6"))              # per IP / minute
+RATE_PER_DAY = int(os.environ.get("RATE_PER_DAY", "40"))             # per IP / day
+GLOBAL_PER_DAY = int(os.environ.get("GLOBAL_PER_DAY", "800"))        # all IPs / day (hard spend cap; 0 disables)
+
+
+class _RateLimiter:
+    """Sliding-window per-IP + global request limiter, stdlib-only. Records a
+    timestamp per allowed request and prunes anything older than 24h; a periodic
+    sweep bounds memory when many distinct IPs hit it."""
+
+    def __init__(self, per_min: int, per_day: int, global_per_day: int) -> None:
+        self.per_min, self.per_day, self.global_per_day = per_min, per_day, global_per_day
+        self._lock = threading.Lock()
+        self._hits: dict[str, list[float]] = {}   # ip -> recent request timestamps
+        self._global: list[float] = []            # timestamps across all IPs
+        self._last_sweep = 0.0
+
+    def check(self, ip: str) -> str | None:
+        """Return None if the request is allowed (and record it), else a short
+        human-readable reason to show the visitor."""
+        now = time.time()
+        day_ago, min_ago = now - 86400, now - 60
+        with self._lock:
+            if now - self._last_sweep > 300:      # sweep every 5 min
+                self._hits = {k: t for k, t in
+                              ((k, [x for x in v if x > day_ago])
+                               for k, v in self._hits.items()) if t}
+                self._global = [x for x in self._global if x > day_ago]
+                self._last_sweep = now
+            self._global = [x for x in self._global if x > day_ago]
+            if self.global_per_day and len(self._global) >= self.global_per_day:
+                return ("This assistant has reached its daily limit for everyone — "
+                        "please try again tomorrow.")
+            ts = [x for x in self._hits.get(ip, []) if x > day_ago]
+            if self.per_day and len(ts) >= self.per_day:
+                return ("You've reached the daily question limit — "
+                        "please come back tomorrow.")
+            if self.per_min and sum(1 for x in ts if x > min_ago) >= self.per_min:
+                return ("You're sending questions a bit too fast — "
+                        "give it a few seconds and try again.")
+            ts.append(now)
+            self._hits[ip] = ts
+            self._global.append(now)
+            return None
+
+
+_limiter = _RateLimiter(RATE_PER_MIN, RATE_PER_DAY, GLOBAL_PER_DAY)
+
+
+def _client_ip(request: Request) -> str:
+    """Real client IP. Render (like any proxy) puts it in X-Forwarded-For; the
+    socket peer (request.client) is the proxy, so prefer the header's first hop."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def _origin_allowed(request: Request) -> bool:
+    """When ALLOWED_ORIGINS is locked down (not '*'), only serve browser requests
+    whose Origin/Referer is on the list — this stops other sites from embedding
+    the widget and spending the key. (A non-browser client can forge these, so
+    this is a complement to, not a replacement for, the rate limits.)"""
+    if "*" in ALLOWED_ORIGINS:
+        return True
+    allow = [o.rstrip("/") for o in ALLOWED_ORIGINS]
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if origin:
+        return origin in allow
+    ref = request.headers.get("referer") or ""
+    return any(ref.startswith(o) for o in allow)
 
 
 # --- shared state, populated on startup -------------------------------------
@@ -181,7 +261,8 @@ def _with_history(question: str, history: list[Turn]) -> str:
     lines = []
     for t in turns:
         who = "User" if t.role == "user" else "Assistant"
-        lines.append(f"{who}: {t.content.strip()}")
+        # cap each turn so a crafted history can't balloon the prompt (and cost)
+        lines.append(f"{who}: {t.content.strip()[:MAX_TURN_CHARS]}")
     convo = "\n".join(lines)
     return (f"Conversation so far:\n{convo}\n\n"
             f"Given that conversation, answer this follow-up. Resolve any "
@@ -190,6 +271,15 @@ def _with_history(question: str, history: list[Turn]) -> str:
 
 def _sse(kind: str, **data) -> str:
     return f"data: {json.dumps({'kind': kind, **data})}\n\n"
+
+
+def _error_stream(message: str) -> StreamingResponse:
+    """A one-line SSE 'error' event, so a rejected request renders as a friendly
+    in-chat message in the widget rather than an opaque failed fetch."""
+    def _gen():
+        yield _sse("error", message=message)
+    return StreamingResponse(_gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache"})
 
 
 def _stream(question: str, history: list[Turn] | None = None):
@@ -235,12 +325,22 @@ def _stream(question: str, history: list[Turn] | None = None):
 
 
 @app.post("/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, request: Request):
     question = (req.question or "").strip()
     if not question:
         def _empty():
             yield _sse("final", answer="Ask me something about Aditya.", tools_used=[])
         return StreamingResponse(_empty(), media_type="text/event-stream")
+    # --- abuse guards, cheapest first: origin, size, then rate (which records) ---
+    if not _origin_allowed(request):
+        return _error_stream("This assistant only runs on Aditya's site.")
+    if len(question) > MAX_QUESTION_CHARS:
+        return _error_stream(
+            f"That question is a bit long (max {MAX_QUESTION_CHARS} characters) — "
+            "please shorten it.")
+    limited = _limiter.check(_client_ip(request))
+    if limited:
+        return _error_stream(limited)
     return StreamingResponse(
         _stream(question, req.history),
         media_type="text/event-stream",
