@@ -68,6 +68,6 @@ services:
       # tighten to your Pages/portfolio origins in production, e.g.
       # https://jackgriffin105.github.io,https://adityajn105.github.io
       - key: ALLOWED_ORIGINS
-        value: "*"
+        value: "https://adityajain.me,https://projects.adityajain.me,https://chat.adityajain.me"
       - key: PYTHON_VERSION
         value: "3.12.6"
