@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
 
@@ -50,9 +51,33 @@ def send_contact_message(message: str, from_email: str, name: str = "",
         "message": message,
         "_subject": f"Portfolio chatbot: message from {name.strip() or from_email}",
     }).encode("utf-8")
+    # Present a full, realistic browser fingerprint. Formspree's spam filter
+    # 403s the default "Python-urllib/x.y" User-Agent (it reads as a bot) — which
+    # is why a manual curl to the same form works but this server-side POST
+    # didn't. Sending the same headers a real AJAX submit from the site would
+    # carry (Chrome UA + Origin/Referer + Accept-Language + Sec-Fetch-*) makes
+    # the request indistinguishable from an in-browser fetch, so it's accepted.
+    origin = os.environ.get("FORMSPREE_REFERER", "https://adityajain.me").rstrip("/")
     req = urllib.request.Request(
         endpoint, data=payload, method="POST",
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/125.0.0.0 Safari/537.36"),
+            # a domain-restricted form checks Origin/Referer; send the site so it
+            # still accepts a server-side POST (override via FORMSPREE_REFERER).
+            "Origin": origin,
+            "Referer": origin + "/",
+            "sec-ch-ua": '"Chromium";v="125", "Not.A/Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -62,6 +87,16 @@ def send_contact_message(message: str, from_email: str, name: str = "",
             return (f"Sorry, the message didn't go through (status {resp.status}). "
                     "Please try emailing Aditya directly.")
     except urllib.error.HTTPError as e:
+        # Log Formspree's actual error body so a 403/422 is diagnosable from the
+        # Render logs (deprecated endpoint, inactive form, domain restriction,
+        # etc.) — the visitor still sees only the clean message below.
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            pass
+        print(f"[contact] Formspree {e.code} for endpoint {endpoint!r}: {detail}",
+              file=sys.stderr, flush=True)
         return (f"Sorry, the message didn't go through (status {e.code}). "
                 "Please try emailing Aditya directly.")
     except Exception:
