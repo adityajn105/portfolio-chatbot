@@ -121,41 +121,55 @@ Selected work
 
 ## Projects
 
+### Portfolio Chatbot — Agentic RAG
+
+A retrieval-augmented, agentic assistant for my site, built from scratch (no LangChain): a ReAct agent that searches a crawl of my blog and can email me, with tools exposed over MCP and streamed to an embeddable chat widget. Runs on a fully-free stack — FastAPI on Render, Gemini for generation and embeddings.
+
+RAG · Agents · MCP · FastAPI · Gemini
+
+Demo
+Code
+
+### TradeBuddy — Stock Analysis
+
+A client-side stock-analysis tool: enter a US ticker to get support/resistance zones, entry/stop/target levels, risk:reward, and position sizing. All math runs in the browser and shows its work — the formula and source behind every number. Not financial advice.
+
+JavaScript · Technical Analysis · Charts
+
+Demo
+Code
+
+### Checkers AI — Alpha-Beta Minimax
+
+An AI agent using Minimax with alpha-beta pruning to play checkers. Built for the CSCI-561 "Foundations of AI" course, where it competed against other students' agents.
+
+AI · Minimax · Game
+
+Code
+
 ### MLfromScratch
 
-Classification, regression, and clustering algorithms — plus metrics and preprocessing helpers — implemented from scratch with NumPy for a deeper understanding of the math.
+Classification, regression, and clustering algorithms — plus metrics, preprocessing, and model-selection helpers — implemented from scratch with NumPy for a deeper understanding of how they work.
 
-NumPy · ML · Algorithms
+Machine Learning · NumPy · Python
+
+Code
 
 ### Brain Tumor Segmentation (MRI)
 
-Implemented U-Net from "U-Net: Convolutional Networks for Biomedical Image Segmentation" to segment brain tumors in MRI scans.
+A U-Net (from "U-Net: Convolutional Networks for Biomedical Image Segmentation") built in Keras to segment brain tumors in MRI scans.
 
-U-Net · Segmentation · PyTorch
+Deep Learning · Segmentation · Keras
 
-### FaceGAN — Generating Random Faces
-
-Inspired by thispersondoesnotexist.com. Trained a Deep Convolutional GAN on 100k celebrity photos to generate photorealistic faces.
-
-GAN · Generative · CV
+Code
 
 ### NER / POS Tagging App
 
-An LSTM seq2seq model that tags words with their Named Entity or Part of Speech. Served with Flask and packaged with Docker.
+An LSTM-based seq2seq model that tags every word of a paragraph with its Named Entity or Part of Speech. Served with Flask and Docker.
 
-LSTM · NLP · Docker
+NLP · LSTM · Flask · Docker
 
-### Image Caption Generator
-
-Implementation of the "merge" architecture from "What is the Role of RNNs in an Image Caption Generator?" using Keras.
-
-Keras · CV + NLP · RNN
-
-### Automatic Kinship Detection
-
-A Kaggle challenge: given a pair of faces, determine whether they are related. Uses a Siamese network over VGG-Face.
-
-Siamese Net · Kaggle · CV
+Code
 
 View all projects
 
