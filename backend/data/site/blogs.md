@@ -7,6 +7,50 @@ Writing
 
 # All posts
 
+### How to Actually Work With AI Agents: A Field Guide
+
+The bottleneck in agentic development isn't the model — it's you. A practical field guide to prompting that lands, engineering the context window, the plan → act → verify loop, and the modern tooling (MCP, subagents, skills, memory) that separates people who ship with agents from people who fight them.
+
+- Agents
+- LLM
+- Prompting
+- Productivity
+
+Sep 10, 2026
+
+### Guardrails for LLM Apps and Agents: What Breaks and How to Contain It
+
+An LLM is gullible and, as an agent, powerful — a dangerous combination once it's in production. A field guide to what goes wrong (prompt injection, PII leakage, excessive agency, insecure output, denial-of-wallet and more, mapped to the OWASP LLM Top 10), which guardrail contains each one, and the tools — NeMo Guardrails, Guardrails AI, Llama Guard, Presidio, Bedrock/Azure guardrails, Garak — you use to build them.
+
+- LLM
+- Agents
+- Security
+- Guardrails
+
+Sep 6, 2026
+
+### Using LLMs Efficiently: The Right Model for the Job
+
+The cheapest token is the one you never sent to the biggest model. A practical guide to using LLMs efficiently — how to match a model tier to each task, what model routers like OpenRouter and Cursor's Auto mode actually do, the reuse/context/throughput levers that cut cost without touching quality, and the 'local metric trap' that makes over-optimizing backfire.
+
+- LLM
+- Cost
+- Routing
+- Systems
+
+Sep 5, 2026
+
+### From Query to Next Token: How LLM Inference Gets Fast
+
+How does a model with a million-token context produce the next token in milliseconds? Trace the full journey — query → tokens → forward pass → sampled token — then see why decode is memory-bandwidth-bound, not compute-bound, and how KV caching, GQA, PagedAttention, FlashAttention, continuous batching, speculative decoding, quantization, distillation, MoE, and tensor/pipeline parallelism each buy back speed.
+
+- LLM
+- Inference
+- Performance
+- Systems
+
+Sep 4, 2026
+
 ### Building the Chatbot on This Site: from the series to a live assistant
 
 The capstone: a full, file-by-file walkthrough of the assistant on this site — crawler, from-scratch RAG, a ReAct agent, tools over MCP, SSE streaming, an embeddable Shadow-DOM widget, and the safety-and-cost work tutorials skip. Every step points at the real code on GitHub and the production tool you'd swap in. It's live — go talk to it.
